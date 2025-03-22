@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using LINQPad;
 using LINQPad.Extensibility.DataContext;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
@@ -196,5 +197,17 @@ namespace {nameSpace}" +
                 throw new Exception("Cannot compile typed context: " + compileResult.Errors[0]);
             }
         }
+
+        public override ICustomMemberProvider GetCustomDisplayMemberProvider(object objectToWrite)
+        {
+            if (objectToWrite is BsonDocument bd)
+            {
+                return new BsonDocumentCustomMemberProvider(bd);
+            }
+            return null;
+        }
+        
     }
+
+
 }
