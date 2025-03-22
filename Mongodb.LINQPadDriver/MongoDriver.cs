@@ -39,7 +39,10 @@ namespace MongoDB.LINQPadDriver
 
         public override IEnumerable<string> GetAssembliesToAdd(IConnectionInfo cxInfo)
         {
-            return new[] { "*", cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath() };
+            var customAssemblyPath = cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath();
+            return customAssemblyPath == null
+                ? (IEnumerable<string>)(new[] { "*" })
+                : (IEnumerable<string>)(new[] { "*", cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath() });
         }
 
         public override IEnumerable<string> GetNamespacesToAdd(IConnectionInfo cxInfo)
@@ -99,10 +102,15 @@ namespace MongoDB.LINQPadDriver
             Debugger.Launch();
 #endif
             var @namespaces = cxInfo.DatabaseInfo.Server.Split(';');
-            var types = LoadAssemblySafely(cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath()).GetTypes()
-                .Where(a => @namespaces.Contains(a.Namespace) && a.IsPublic)
-                .Select(a => a.Name)
-                .ToHashSet();
+            var customAssemblyPath = cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath();
+            var types = new HashSet<string>();
+            if (customAssemblyPath != null)
+            {
+                types = LoadAssemblySafely(customAssemblyPath).GetTypes()
+                    .Where(a => @namespaces.Contains(a.Namespace) && a.IsPublic)
+                    .Select(a => a.Name)
+                    .ToHashSet();
+            }
 
             var mongoClientSettings = MongoClientSettings.FromUrl(new MongoUrl(cxInfo.DatabaseInfo.CustomCxString));
             var client = new MongoClient(mongoClientSettings);
@@ -149,8 +157,9 @@ namespace {nameSpace}" +
 + @"}	
 }";
 
-            Compile(source, assemblyToBuild.CodeBase,
-                Directory.GetFiles(new FileInfo(cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath()).DirectoryName, "*.dll")
+            Compile(cxInfo, source, assemblyToBuild.CodeBase,
+                ((customAssemblyPath == null) ? new string[0] :
+                    Directory.GetFiles(new FileInfo(customAssemblyPath).DirectoryName, "*.dll"))
                 .Concat(new[]{
                     typeof(IMongoDatabase).Assembly.Location,
                     typeof(BsonDocument).Assembly.Location,
@@ -167,11 +176,11 @@ namespace {nameSpace}" +
             return schemas.ToList();
         }
 
-        private static void Compile(string cSharpSourceCode, string outputFile, IEnumerable<string> customTypeAssemblyPath)
+        private static void Compile(IConnectionInfo cxInfo, string cSharpSourceCode, string outputFile, IEnumerable<string> customTypeAssemblyPath)
         {
             // GetCoreFxReferenceAssemblies is helper method that returns the full set of .NET Core reference assemblies.
             // (There are more than 100 of them.)
-            var assembliesToReference = GetCoreFxReferenceAssemblies().Concat(customTypeAssemblyPath).ToArray();
+            var assembliesToReference = GetCoreFxReferenceAssemblies(cxInfo).Concat(customTypeAssemblyPath).ToArray();
 
             // CompileSource is a static helper method to compile C# source code using LINQPad's built-in Roslyn libraries.
             // If you prefer, you can add a NuGet reference to the Roslyn libraries and use them directly.
