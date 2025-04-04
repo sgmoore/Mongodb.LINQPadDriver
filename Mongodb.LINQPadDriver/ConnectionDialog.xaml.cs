@@ -22,6 +22,10 @@ namespace MongoDB.LINQPadDriver
             _cxInfo = cxInfo;
             DataContext = cxInfo;
             InitializeComponent();
+
+            chkDebug.IsChecked = (bool) _cxInfo.DriverData.Element("Debug");
+
+
         }
 
         private void btnOK_Click(object sender, RoutedEventArgs e)
@@ -39,6 +43,9 @@ namespace MongoDB.LINQPadDriver
                 DialogResult = null;
                 return;
             }
+
+            _cxInfo.DriverData.SetElementValue("Debug", chkDebug.IsChecked);
+
             DialogResult = true;
         }
 
@@ -59,7 +66,7 @@ namespace MongoDB.LINQPadDriver
         private void ChooseNamespace(object sender, RoutedEventArgs e)
         {
             //Debugger.Launch();
-            string assemPath = _cxInfo.CustomTypeInfo.CustomAssemblyPath;
+            var assemPath = _cxInfo.CustomTypeInfo.CustomAssemblyPath;
             if (assemPath.Length == 0)
             {
                 MessageBox.Show("First enter a path to an assembly.");
@@ -92,7 +99,7 @@ namespace MongoDB.LINQPadDriver
                 return;
             }
 
-            string result = (string)LINQPad.Extensibility.DataContext.UI.Dialogs.PickFromList("Choose Namespace", customTypes);
+            var result = (string)LINQPad.Extensibility.DataContext.UI.Dialogs.PickFromList("Choose Namespace", customTypes);
             if (result != null)
             {
                 _cxInfo.DatabaseInfo.Server = result;

@@ -18,6 +18,7 @@ namespace MongoDB.LINQPadDriver
     {
         static MongoDriver()
         {
+            // Debugger.Launch();
             // Uncomment the following code to attach to Visual Studio's debugger when an exception is thrown.
 #if DEBUG
             AppDomain.CurrentDomain.FirstChanceException += (sender, args) =>
@@ -96,12 +97,16 @@ namespace MongoDB.LINQPadDriver
         public override bool ShowConnectionDialog(IConnectionInfo cxInfo, ConnectionDialogOptions dialogOptions)
             => new ConnectionDialog(cxInfo).ShowDialog() == true;
 
+        private string GetClass(string table) => string.Concat(table[0].ToString().ToUpper(), table.AsSpan(1));
+
         public override List<ExplorerItem> GetSchemaAndBuildAssembly(
             IConnectionInfo cxInfo, AssemblyName assemblyToBuild, ref string nameSpace, ref string typeName)
         {
-#if DEBUG
-            Debugger.Launch();
-#endif
+
+            if ((bool?)cxInfo.DriverData.Element("Debug") ?? false)
+            {
+                Debugger.Launch();
+            }
             var @namespaces = cxInfo.DatabaseInfo.Server.Split(';');
             var customAssemblyPath = cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath();
             var types = new HashSet<string>();
@@ -119,7 +124,7 @@ namespace MongoDB.LINQPadDriver
                 (from c in client.GetDatabase(cxInfo.DatabaseInfo.Database).ListCollectionNames().ToList()
                 //  where char.IsUpper(c[0]) // ignore system collection
                  orderby c
-                 select (collectionName: c, type: types.Contains(c) ? c : nameof(BsonDocument))
+                 select (collectionName: c , className : GetClass(c), type: types.Contains(c) ? c : nameof(BsonDocument))
                  ).ToList();
 
             var source = @$"using System;
@@ -127,14 +132,17 @@ using System.Collections.Generic;
 using System.Linq;
 using MongoDB.Bson;
 using MongoDB.Driver;
+
+
 { string.Join(Environment.NewLine, @namespaces.Select(n => "using " + n + ";")) }
 
 namespace {nameSpace}" +
-@"{
-    // The main typed data class. The user's queries subclass this, so they have easy access to all its members.
-	public class " + typeName + @"
-	{
-        public IMongoDatabase Database => _db;
+@"
+{
+   // The main typed data class. The user's queries subclass this, so they have easy access to all its members.
+   public class " + typeName + @"
+   {
+        public IMongoDatabase GetDatabase() => _db;
         private IMongoDatabase _db;
         internal void Initial(IMongoDatabase db)
         {
@@ -147,16 +155,26 @@ namespace {nameSpace}" +
         public " + typeName + @"()
         {
 " + string.Join("\n", collections.Select(c =>
-             $"_{c.collectionName} = InitCollection<{c.type}>(\"{c.collectionName}\");"))
-+ @"}
+             $"            _{c.className} = InitCollection<{c.type}>(\"{c.collectionName}\");"))
++ @"
+        }
 
 " + string.Join("\n",
-        collections.Select(c =>
-        $@"
-            private readonly Lazy<IMongoCollection<{c.type}>> _{c.collectionName};
-            public IMongoCollection<{c.type}> {c.collectionName} => _{c.collectionName}.Value;"))
-+ @"}	
-}";
+    collections.Select(c =>
+    $@"
+        private readonly Lazy<IMongoCollection<{c.type}>> _{c.className};
+        public IMongoCollection<{c.type}> {c.className}_Collection() => _{c.className}.Value;
+        public IQueryable<{c.type}> {c.className} => _{c.className}.Value.AsQueryable(); "))
+
++ @"
+   }	
+}"
+
+;
+            if ((bool?)cxInfo.DriverData.Element("Debug") ?? false)
+            {
+                NotepadHelper.ShowMessage(source, "Source for TypedDataContext");
+            }
 
             Compile(cxInfo, source, assemblyToBuild.CodeBase,
                 ((customAssemblyPath == null) ? new string[0] :
@@ -164,14 +182,15 @@ namespace {nameSpace}" +
                 .Concat(new[]{
                     typeof(IMongoDatabase).Assembly.Location,
                     typeof(BsonDocument).Assembly.Location,
+                    typeof(MongoDB.Driver.Core.Configuration.ConnectionSettings).Assembly.Location
                     }));
 
             // We need to tell LINQPad what to display in the TreeView on the left (Schema Explorer):
             var schemas = collections.Select(a =>
-                new ExplorerItem(a.collectionName, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
+                new ExplorerItem(a.className , ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
                 {
                     IsEnumerable = true,
-                    DragText = a.collectionName,
+                    DragText = a.className,
                 });
 
             return schemas.ToList();
