@@ -28,5 +28,6 @@ Setup connection
 
 
 To make dumping BsonDocuments as neat as possible the driver implements some CustomMemberProviders and by default ObjectID's are displayed as simple strings. You can display that feature at runtime by setting 
-```MongoDB.LINQPadDriver.MongoDriver.DisableCustomMemberProviders = true;
+```
+MongoDB.LINQPadDriver.MongoDriver.DisableCustomMemberProviders = true;
 ```
