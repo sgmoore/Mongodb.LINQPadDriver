@@ -5,17 +5,21 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using LINQPad;
 using LINQPad.Extensibility.DataContext;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
 using MongoDB.Driver;
 using MongoDB.Driver.Core.Events;
+using MongoDB.LINQPadDriver.CustomMemberProviders;
 
 namespace MongoDB.LINQPadDriver
 {
     public sealed class MongoDriver : DynamicDataContextDriver
     {
+        static public bool DisableCustomMemberProviders = false;
+
         static MongoDriver()
         {
             // Debugger.Launch();
@@ -32,19 +36,33 @@ namespace MongoDB.LINQPadDriver
         }
 
         public override string Name => "MongoDB Driver " + Version;
-        public override string Author => "mkjeff";
+        public override string Author => "mkjeff,sgmoore";
         public override Version Version => typeof(MongoDriver).Assembly.GetName().Version;
 
         public override bool AreRepositoriesEquivalent(IConnectionInfo c1, IConnectionInfo c2)
             => c1.DatabaseInfo.CustomCxString == c2.DatabaseInfo.CustomCxString
             && c1.DatabaseInfo.Database == c2.DatabaseInfo.Database;
 
-        public override IEnumerable<string> GetAssembliesToAdd(IConnectionInfo cxInfo)
+        private string GetCustomAssemblyPath(IConnectionInfo cxInfo)
         {
             var customAssemblyPath = cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath();
+            if (customAssemblyPath == null)
+            {
+                return null;
+            }
+            if (!string.Equals(Path.GetExtension(customAssemblyPath), ".cs", StringComparison.CurrentCultureIgnoreCase))
+            {
+                return customAssemblyPath;
+            }
+            return null;
+        }
+
+        public override IEnumerable<string> GetAssembliesToAdd(IConnectionInfo cxInfo)
+        {
+            var customAssemblyPath = GetCustomAssemblyPath(cxInfo);
             return customAssemblyPath == null
                 ? (IEnumerable<string>)(new[] { "*" })
-                : (IEnumerable<string>)(new[] { "*", cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath() });
+                : (IEnumerable<string>)(new[] { "*", customAssemblyPath });
         }
 
         public override IEnumerable<string> GetNamespacesToAdd(IConnectionInfo cxInfo)
@@ -97,7 +115,16 @@ namespace MongoDB.LINQPadDriver
         public override bool ShowConnectionDialog(IConnectionInfo cxInfo, ConnectionDialogOptions dialogOptions)
             => new ConnectionDialog(cxInfo).ShowDialog() == true;
 
-        private string GetClass(string table) => string.Concat(table[0].ToString().ToUpper(), table.AsSpan(1));
+        private string GetClass(string table)
+        {
+            var name = string.Concat(table[0].ToString().ToUpper(), table.AsSpan(1));
+            if (IsCSharpKeyword(name))
+            {
+                name = "_" + name;
+            }
+
+            return name;
+        }
 
         public override List<ExplorerItem> GetSchemaAndBuildAssembly(
             IConnectionInfo cxInfo, AssemblyName assemblyToBuild, ref string nameSpace, ref string typeName)
@@ -110,21 +137,31 @@ namespace MongoDB.LINQPadDriver
             var @namespaces = cxInfo.DatabaseInfo.Server.Split(';');
             var customAssemblyPath = cxInfo.CustomTypeInfo.GetAbsoluteCustomAssemblyPath();
             var types = new HashSet<string>();
+            SimpleParser parser = null;
             if (customAssemblyPath != null)
             {
-                types = LoadAssemblySafely(customAssemblyPath).GetTypes()
+                if (string.Equals(Path.GetExtension(customAssemblyPath), ".cs", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    parser = new SimpleParser(customAssemblyPath);
+                    types = parser.ClassNames.ToHashSet();
+                    customAssemblyPath = null;
+                }
+                else
+                {
+                    types = LoadAssemblySafely(customAssemblyPath).GetTypes()
                     .Where(a => @namespaces.Contains(a.Namespace) && a.IsPublic)
                     .Select(a => a.Name)
                     .ToHashSet();
+                }
             }
 
             var mongoClientSettings = MongoClientSettings.FromUrl(new MongoUrl(cxInfo.DatabaseInfo.CustomCxString));
             var client = new MongoClient(mongoClientSettings);
             var collections =
-                (from c in client.GetDatabase(cxInfo.DatabaseInfo.Database).ListCollectionNames().ToList()
-                //  where char.IsUpper(c[0]) // ignore system collection
-                 orderby c
-                 select (collectionName: c , className : GetClass(c), type: types.Contains(c) ? c : nameof(BsonDocument))
+                (from collectionName in client.GetDatabase(cxInfo.DatabaseInfo.Database).ListCollectionNames().ToList()
+                 let className = GetClass(collectionName)
+                 orderby collectionName
+                 select (collectionName, className, type: types.Contains(className) ? className : nameof(BsonDocument))
                  ).ToList();
 
             var source = @$"using System;
@@ -132,7 +169,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MongoDB.Bson;
 using MongoDB.Driver;
-
+using MongoDB.Bson.Serialization.Attributes;
 
 { string.Join(Environment.NewLine, @namespaces.Select(n => "using " + n + ";")) }
 
@@ -166,9 +203,13 @@ namespace {nameSpace}" +
         public IMongoCollection<{c.type}> {c.className}_Collection() => _{c.className}.Value;
         public IQueryable<{c.type}> {c.className} => _{c.className}.Value.AsQueryable(); "))
 
-+ @"
-   }	
-}"
++ $@"
+   }}
+
+{parser?.SourceCode}
+
+}}"
+
 
 ;
             if ((bool?)cxInfo.DriverData.Element("Debug") ?? false)
@@ -219,10 +260,31 @@ namespace {nameSpace}" +
 
         public override ICustomMemberProvider GetCustomDisplayMemberProvider(object objectToWrite)
         {
-            if (objectToWrite is BsonDocument bd)
+            if (!DisableCustomMemberProviders)
             {
-                return new BsonDocumentCustomMemberProvider(bd);
+                if (objectToWrite is BsonDocument bd)
+                {
+                    return new BsonDocumentCustomMemberProvider(bd);
+                }
+
+                if (objectToWrite is MongoDB.Bson.ObjectId oid)
+                {
+                    return new ObjectIdCustomMemberProvider(oid);
+                }
+
+                // If we have implemented our own classes and they have an ObjectID property
+                // then apply out custom member provider. If we don't do this and we dump
+                // our entity to just one level, it would show links to expand the objectID
+                // property and only when expand would the ObjectIdCustomMemberProvider apply.
+                // The EntityCustomMemberProvider does away with the extra step.
+                if ((objectToWrite != null) && !(objectToWrite is BsonValue) &&
+                    objectToWrite.GetType().GetProperties().Any(a => a.PropertyType == typeof(ObjectId)) 
+                    )
+                {
+                    return new EntityCustomMemberProvider(objectToWrite);
+                }
             }
+           
             return null;
         }
         

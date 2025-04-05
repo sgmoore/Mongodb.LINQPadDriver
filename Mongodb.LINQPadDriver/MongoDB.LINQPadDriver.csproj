@@ -5,20 +5,22 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageTags>linqpaddriver</PackageTags>
     <LangVersion>8.0</LangVersion>
+	<Nullable>disable</Nullable>
   </PropertyGroup>
   <PropertyGroup>
     <DefineConstants>NETCORE</DefineConstants>
-    <Authors>mkjeff</Authors>
+    <Authors>mkjeff,sgmoore</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/mkjeff/Mongodb.LINQPadDriver</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mkjeff/Mongodb.LINQPadDriver</RepositoryUrl>
     <Description>MongoDB LINQPad driver</Description>
     <Title>MongoDB LINQPad driver</Title>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="LINQPad.Reference" Version="1.3.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
     <PackageReference Include="MongoDB.Driver" Version="2.30.0" />
   </ItemGroup>
   <ItemGroup>

@@ -1,10 +1,11 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using LINQPad;
 using MongoDB.Bson;
 
-namespace MongoDB.LINQPadDriver
+namespace MongoDB.LINQPadDriver.CustomMemberProviders
 {
     /// <summary>
     /// CustomMemberProvider used by LinqPad when dumping BsonDocuments
@@ -26,9 +27,14 @@ namespace MongoDB.LINQPadDriver
 
         IEnumerable<Type> ICustomMemberProvider.GetTypes()    => from elem in _bsonDocument select BsonTypeMapper.MapToDotNetValue(elem.Value).GetType();
 
-        IEnumerable<object> ICustomMemberProvider.GetValues() => from elem in _bsonDocument
-                                                                 let val = BsonTypeMapper.MapToDotNetValue(elem.Value)
-                                                                 let oid = val as ObjectId?
-                                                                 select oid == null ? val : oid.ToString();
+        IEnumerable<object> ICustomMemberProvider.GetValues() =>
+            from elem in _bsonDocument
+                // Leave BsonDocuments and array of BsonDocuments as they are so that the formatting
+                // from this ICustomMemberProvider will apply recursively.
+            let leave = elem.Value.IsBsonDocument ||
+                (elem.Value.IsBsonArray && elem.Value.AsBsonArray.ToArray().All(a => a.IsBsonDocument))
+            select elem.Value.IsObjectId ? "elem.Value.ToString()" :
+                leave ? elem.Value : BsonTypeMapper.MapToDotNetValue(elem.Value);
     }
+
 }

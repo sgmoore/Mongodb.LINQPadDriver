@@ -23,7 +23,11 @@ namespace MongoDB.LINQPadDriver
             DataContext = cxInfo;
             InitializeComponent();
 
-            chkDebug.IsChecked = (bool) _cxInfo.DriverData.Element("Debug");
+            var debugElement =_cxInfo.DriverData.Element("Debug");
+            if (debugElement != null)
+            {
+                chkDebug.IsChecked = (bool)debugElement;
+            }
 
 
         }
@@ -55,6 +59,7 @@ namespace MongoDB.LINQPadDriver
             {
                 Title = "Choose custom assembly",
                 DefaultExt = ".dll",
+                Filter = "Assemblies|*.dll|Source Code|*.cs|All Files|*.*"
             };
 
             if (dialog.ShowDialog() == true)

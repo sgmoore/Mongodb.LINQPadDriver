@@ -1,7 +1,7 @@
 ﻿<Window x:Class="MongoDB.LINQPadDriver.ConnectionDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Universal Demo Connection"
+    Title="MongoDB LINQPadDriver Connection"
     Background="{x:Static SystemColors.ControlBrush}"
     SizeToContent="Height"
     Width="500" 
@@ -12,7 +12,7 @@
             <Label DockPanel.Dock="Right" Padding="1">
                 <Hyperlink Click="BrowseAssembly">Browse...</Hyperlink>
             </Label>
-            <Label Padding="0,0,0,1">Path to typed documents assembly:</Label>
+            <Label Padding="0,0,0,1">Path to typed documents assembly or source file (optional):</Label>
         </DockPanel>
 
         <TextBox Name="txtAssemblyPath" Padding="2" Margin="0,1,0,9" Text="{Binding CustomTypeInfo.CustomAssemblyPath}"/>
